@@ -83,6 +83,9 @@ export function FractionBar({
         console.warn('FractionBar: numerator must be between 0 and denominator');
     }
 
+    // Clamp numerator to valid range
+    const clampedNumerator = Math.max(0, Math.min(numerator, denominator));
+
     const config = sizeConfig[size];
     const { width: totalWidth, height: segmentHeight, gap } = config;
 
@@ -100,7 +103,7 @@ export function FractionBar({
 
     // Generate segment data
     const segments = Array.from({ length: denominator }, (_, index) => {
-        const isFilled = index < numerator;
+        const isFilled = index < clampedNumerator;
         const isHighlighted = highlighted.includes(index);
 
         return {

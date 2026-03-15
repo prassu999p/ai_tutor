@@ -24,9 +24,8 @@ export async function POST(
         return NextResponse.json({ summary });
     } catch (error) {
         console.error('Error ending session:', error);
-        const message = error instanceof Error ? error.message : 'Internal server error';
         return NextResponse.json(
-            { error: message },
+            { error: 'Failed to end session' },
             { status: 500 }
         );
     }

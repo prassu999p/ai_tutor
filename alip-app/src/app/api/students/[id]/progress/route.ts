@@ -37,6 +37,26 @@ export async function GET(
                 .order('occurrence_count', { ascending: false }),
         ]);
 
+        // Log individual query failures for debugging
+        if (conceptMasteryRes.error) {
+            console.error('Concept mastery query failed:', conceptMasteryRes.error);
+        }
+        if (skillsRes.error) {
+            console.error('Skills query failed:', skillsRes.error);
+        }
+        if (misconceptionsRes.error) {
+            console.error('Misconceptions query failed:', misconceptionsRes.error);
+        }
+
+        // If all queries failed, return error
+        if (conceptMasteryRes.error && skillsRes.error && misconceptionsRes.error) {
+            return NextResponse.json(
+                { error: 'Failed to fetch progress data' },
+                { status: 500 }
+            );
+        }
+
+        // Return available data (graceful degradation)
         return NextResponse.json({
             conceptMastery: conceptMasteryRes.data ?? [],
             skills: skillsRes.data ?? [],
@@ -44,9 +64,8 @@ export async function GET(
         });
     } catch (error) {
         console.error('Error fetching progress:', error);
-        const message = error instanceof Error ? error.message : 'Internal server error';
         return NextResponse.json(
-            { error: message },
+            { error: 'Failed to fetch progress' },
             { status: 500 }
         );
     }

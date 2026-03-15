@@ -191,7 +191,7 @@ export function SessionSummary({
                     Total Progress This Session
                 </p>
                 <p className="text-3xl font-bold text-blue-700">
-                    +{Math.round(totalImprovement * 100)}%
+                    {totalImprovement >= 0 ? '+' : ''}{Math.round(totalImprovement * 100)}%
                 </p>
                 <p className="text-sm text-blue-500 mt-1">
                     Keep up the great work!

@@ -58,21 +58,22 @@ export default function SessionPage() {
         }
     }, [sessionStarted, startSession]);
 
-    // Reset selected answer when question changes
+    // Reset selected answer when the question changes (not on state change,
+    // to avoid clearing the answer when transitioning to HINT_SHOWN)
     useEffect(() => {
-        if (state === 'QUESTION_ACTIVE' || state === 'HINT_SHOWN') {
-            setSelectedAnswer('');
-        }
-    }, [state, currentQuestion?.id]);
+        setSelectedAnswer('');
+    }, [currentQuestion?.id]);
 
-    // For multiple choice, we need to combine the correct answer with distractors (stored in tags)
-    // and shuffle them. If no tags exist, it's a free-text question.
+    // For multiple choice, derive options from distractors JSONB + correct answer.
+    // If no distractors exist, it's a free-text question.
     const questionOptions = useMemo(() => {
         if (!question) return [];
-        const distractors = question.tags || [];
-        if (distractors.length === 0) return [];
-        return [...distractors, question.correct_answer].sort(() => Math.random() - 0.5);
-    }, [question?.id, question?.tags, question?.correct_answer]);
+        const questionData = question as unknown as Record<string, unknown>;
+        const distractors = questionData.distractors as Array<{ answer: string }> | null;
+        if (!distractors || !Array.isArray(distractors) || distractors.length === 0) return [];
+        const distractorAnswers = distractors.map(d => d.answer);
+        return [...distractorAnswers, question.correct_answer].sort(() => Math.random() - 0.5);
+    }, [question?.id, question?.correct_answer]);
 
     // Handle answer submission
     const handleSubmitAnswer = async () => {

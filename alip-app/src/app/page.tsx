@@ -10,6 +10,12 @@ import type { StudentSkillProfileRow, MasteryStatus } from '@/types';
 const DEFAULT_STUDENT_ID = '00000000-0000-0000-0000-000000000001';
 const DEFAULT_STUDENT_NAME = 'Alex';
 
+interface ProgressResponse {
+  skills: StudentSkillProfileRow[];
+  conceptMastery: unknown[];
+  activeMisconceptions: unknown[];
+}
+
 interface CurrentSkill {
   skillId: string;
   skillName: string;
@@ -31,7 +37,7 @@ export default function Home() {
           throw new Error('Failed to fetch progress');
         }
 
-        const data = await response.json();
+        const data: ProgressResponse = await response.json();
         const skills: StudentSkillProfileRow[] = data.skills || [];
 
         // Find the first unlocked skill that isn't mastered

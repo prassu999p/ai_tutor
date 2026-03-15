@@ -13,11 +13,42 @@ interface DistractorMapping {
     misconception_id: string | null;
 }
 
+// Module-level cache: questionId → DistractorMapping[]
+// Per architecture spec: "Cache the mapping in memory at startup — do not re-query per request."
+let distractorCache: Map<string, DistractorMapping[]> | null = null;
+
 /**
  * MisconceptionClassifier — rule-based at MVP.
  * Maps student wrong answers to pre-defined distractor → misconception mappings.
+ * Uses an in-memory cache that loads on first classify() call.
  */
 export const MisconceptionClassifier = {
+
+    /**
+     * Initialize the distractor cache by loading all questions.distractors from DB.
+     * Called lazily on first classify() or can be called at app startup.
+     */
+    async initialize(): Promise<void> {
+        const { data, error } = await supabaseServer
+            .from('questions')
+            .select('id, distractors')
+            .eq('is_active', true);
+
+        if (error) {
+            console.error('Failed to initialize MisconceptionClassifier cache:', error);
+            distractorCache = new Map();
+            return;
+        }
+
+        distractorCache = new Map();
+        for (const q of (data ?? [])) {
+            const qData = q as Record<string, unknown>;
+            const distractors = qData.distractors as DistractorMapping[] | null;
+            if (distractors && Array.isArray(distractors)) {
+                distractorCache.set(qData.id as string, distractors);
+            }
+        }
+    },
 
     async classify(
         questionId: string,
@@ -34,32 +65,20 @@ export const MisconceptionClassifier = {
             };
         }
 
-        // Fetch question to get distractors
-        const { data: question } = await supabaseServer
-            .from('questions')
-            .select('*')
-            .eq('id', questionId)
-            .single();
-
-        if (!question) {
-            return {
-                misconceptionId: null,
-                confidence: null,
-                classifierType: 'rule_based',
-                reasoning: 'Question not found',
-            };
+        // Lazy-init cache on first call
+        if (!distractorCache) {
+            await this.initialize();
         }
 
-        // Parse distractors JSONB array
-        const questionData = question as Record<string, unknown>;
-        const distractors = questionData.distractors as DistractorMapping[] | null;
+        // Look up distractors from cache
+        const distractors = distractorCache!.get(questionId);
 
-        if (!distractors || !Array.isArray(distractors)) {
+        if (!distractors || distractors.length === 0) {
             return {
                 misconceptionId: null,
                 confidence: null,
                 classifierType: 'rule_based',
-                reasoning: 'No distractors defined for this question',
+                reasoning: 'No distractors in cache for this question',
             };
         }
 

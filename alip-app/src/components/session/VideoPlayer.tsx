@@ -28,8 +28,6 @@ export interface VideoPlayerProps {
     onSkip?: () => void;
     /** Whether this is a remediation video (non-skippable) */
     isRemediation?: boolean;
-    /** Optional video duration override */
-    duration?: number;
 }
 
 /**
@@ -110,10 +108,11 @@ export function VideoPlayer({
         });
     }, []);
 
-    // Cleanup on unmount
+    // Cleanup on unmount — capture ref value at effect time
     useEffect(() => {
+        const video = videoRef.current;
         return () => {
-            videoRef.current?.pause();
+            video?.pause();
         };
     }, []);
 

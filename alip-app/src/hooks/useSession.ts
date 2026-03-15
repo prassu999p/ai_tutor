@@ -176,6 +176,7 @@ export function useSession(): UseSessionReturn {
             
             // Set initial state from response
             setCurrentMastery(data.currentMastery);
+            currentMasteryRef.current = data.currentMastery;
             setQuestionsAnswered(0);
 
             // Update state
@@ -275,6 +276,7 @@ export function useSession(): UseSessionReturn {
             setFeedbackData(data);
             setRemediationVideoUrl(data.remediationVideoUrl);
             setCurrentMastery(data.masteryAfter);
+            currentMasteryRef.current = data.masteryAfter;
             setQuestionsAnswered(prev => prev + 1);
 
             // State transition based on result
@@ -332,6 +334,14 @@ export function useSession(): UseSessionReturn {
         setError(null);
 
         try {
+            // Handle INTRO_VIDEO → QUESTION_ACTIVE (first question already preselected)
+            if (state === 'INTRO_VIDEO') {
+                resetPerQuestion();
+                setState('QUESTION_ACTIVE');
+                setIsLoading(false);
+                return;
+            }
+
             // Handle FEEDBACK_MISCONCEPTION → INTRO_VIDEO (remediation)
             if (state === 'FEEDBACK_MISCONCEPTION') {
                 if (remediationVideoUrl) {

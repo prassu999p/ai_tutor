@@ -35,8 +35,6 @@ export interface QuestionCardProps {
     masteryStatus?: MasteryStatus;
     /** Question number in the session */
     questionNumber?: number;
-    /** Total questions in the session */
-    totalQuestions?: number;
     /** Callback when hint is requested */
     onHint?: () => void;
     /** Whether hint is available */
@@ -83,7 +81,6 @@ export function QuestionCard({
     masteryScore = 0,
     masteryStatus = 'weak',
     questionNumber = 1,
-    totalQuestions = 10,
     onHint,
     hintAvailable = false,
     hintUsed = false,
