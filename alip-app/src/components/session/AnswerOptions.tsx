@@ -79,6 +79,7 @@ export function AnswerOptions({
             case 'Enter':
             case ' ':
                 e.preventDefault();
+                onSelect?.(options[index]);
                 break;
         }
     }, [disabled, options.length]);

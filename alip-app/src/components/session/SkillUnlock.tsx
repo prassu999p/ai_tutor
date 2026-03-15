@@ -82,7 +82,8 @@ export function SkillUnlock({
         }
 
         // Trigger entrance animation
-        setTimeout(() => setIsVisible(true), 100);
+        const timer = setTimeout(() => setIsVisible(true), 100);
+        return () => clearTimeout(timer);
     }, [showConfetti]);
 
     const handleStart = useCallback(() => {

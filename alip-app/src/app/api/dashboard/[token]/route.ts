@@ -78,17 +78,16 @@ export async function GET(
         });
     } catch (error) {
         console.error('Error fetching dashboard:', error);
-        const message = error instanceof Error ? error.message : 'Internal server error';
-        return NextResponse.json({ error: message }, { status: 500 });
+        return NextResponse.json({ error: 'Failed to fetch dashboard' }, { status: 500 });
     }
 }
 
 function getWeekStart(): string {
     const now = new Date();
-    const dayOfWeek = now.getDay();
+    const dayOfWeek = now.getUTCDay();
     const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
     const monday = new Date(now);
-    monday.setDate(now.getDate() + diff);
-    monday.setHours(0, 0, 0, 0);
+    monday.setUTCDate(now.getUTCDate() + diff);
+    monday.setUTCHours(0, 0, 0, 0);
     return monday.toISOString();
 }

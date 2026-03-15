@@ -16,12 +16,16 @@ export const QuestionSelector = {
     ): Promise<Question> {
 
         // 1. Get all active questions for this skill
-        const { data: rawQuestions } = await supabaseServer
+        const { data: rawQuestions, error: questionsError } = await supabaseServer
             .from('questions')
             .select('*')
             .eq('skill_id', skillId)
             .eq('is_active', true)
             .order('difficulty_weight', { ascending: true });
+
+        if (questionsError) {
+            throw new Error(`Failed to fetch questions for skill ${skillId}: ${questionsError.message}`);
+        }
 
         const allQuestions = (rawQuestions ?? []) as Question[];
 
@@ -30,12 +34,16 @@ export const QuestionSelector = {
         }
 
         // 2. Get question IDs already seen in this session
-        const { data: seenInteractions } = await supabaseServer
+        const { data: seenInteractions, error: seenError } = await supabaseServer
             .from('interactions')
             .select('question_id')
             .eq('session_id', sessionId)
             .eq('student_id', studentId)
             .eq('skill_id', skillId);
+
+        if (seenError) {
+            throw new Error(`Failed to fetch seen interactions: ${seenError.message}`);
+        }
 
         const seenQuestionIds = new Set(
             ((seenInteractions ?? []) as Array<{ question_id: string }>).map(

@@ -279,7 +279,7 @@ export default function ProgressPage() {
                 {/* Overall Progress */}
                 <div className="text-center mb-6">
                     <p className="text-gray-600">
-                        Overall: {masteredCount || 3} of {totalSkills || 8} skills mastered
+                        Overall: {masteredCount} of {totalSkills} skills mastered
                     </p>
                 </div>
 
