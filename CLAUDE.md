@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project Overview
 
-**ALIP** — Adaptive Learning Intelligence Platform. An AI-powered tutoring app for K-8 mathematics. MVP scope: fractions concept only (8 micro-skills, 6 misconception types), single student, no auth.
+**ALIP** — Adaptive Learning Intelligence Platform. An AI-powered tutoring app for K-8 mathematics. MVP scope: fractions concept only (8 micro-skills, 6 misconception types), single hardcoded student, no auth.
 
 The Next.js application lives in `alip-app/`. All docs and specs are in `Docs/`.
 
@@ -39,35 +39,53 @@ Layer 5: External        → Cloudflare Stream (video), Anthropic Claude (V2+)
 
 No business logic lives in API route handlers. All logic is in services.
 
-### Planned File Structure (not yet built)
+### Implemented File Structure
 
 ```
 alip-app/src/
 ├── app/
-│   ├── page.tsx                       # Home screen (server component)
-│   ├── session/page.tsx               # Session screen (client — owns state machine)
-│   ├── progress/page.tsx              # Progress screen (server component)
-│   ├── dashboard/[token]/page.tsx     # Parent dashboard (server component, no auth)
+│   ├── layout.tsx                              # Root layout (server component)
+│   ├── page.tsx                                # Home screen (server component)
+│   ├── session/page.tsx                        # Session screen (client — owns state machine)
+│   ├── progress/page.tsx                       # Progress screen (server component)
+│   ├── dashboard/[token]/page.tsx              # Parent dashboard (server component, no auth)
 │   └── api/
-│       ├── sessions/start/route.ts
-│       ├── sessions/[id]/end/route.ts
-│       ├── sessions/[id]/next-question/route.ts
-│       ├── answers/submit/route.ts
-│       ├── students/[id]/progress/route.ts
-│       └── dashboard/[token]/route.ts
+│       ├── sessions/
+│       │   ├── start/route.ts                  # POST — create session, init skills, first question
+│       │   ├── [id]/end/route.ts               # POST — mark complete, compute summary
+│       │   └── [id]/next-question/route.ts     # GET  — select next adaptive question
+│       ├── answers/submit/route.ts             # POST — classify, update mastery, log interaction
+│       ├── students/[id]/progress/route.ts     # GET  — skill profile + mastery overview
+│       └── dashboard/[token]/route.ts          # GET  — parent dashboard data (public, no auth)
+├── components/
+│   ├── FractionBar.tsx                         # SVG fraction visualization + FractionBarGroup
+│   └── session/
+│       ├── index.ts                            # Barrel re-exports
+│       ├── AnswerOptions.tsx                   # Multiple-choice buttons with keyboard nav
+│       ├── FeedbackPanel.tsx                   # Correct/incorrect/misconception feedback
+│       ├── MasteryBar.tsx                      # Progress bar (weak/developing/mastered)
+│       ├── QuestionCard.tsx                    # Three-zone question layout
+│       ├── SessionSummary.tsx                  # End-of-session stats + skill progress
+│       ├── SkillUnlock.tsx                     # Skill mastered celebration + confetti
+│       └── VideoPlayer.tsx                     # Intro / remediation video player
+├── hooks/
+│   └── useSession.ts                           # 10-state session machine + all session logic
 ├── services/
-│   ├── MasteryService.ts              # ONLY place mastery state is modified
-│   ├── MisconceptionClassifier.ts     # Rule-based (MVP); LLM (V2)
-│   ├── SessionService.ts              # Session lifecycle
-│   └── QuestionSelector.ts           # Difficulty-aware question selection
+│   ├── MasteryService.ts                       # ONLY place mastery state is modified
+│   ├── MisconceptionClassifier.ts              # Rule-based lookup with module-level cache
+│   ├── QuestionSelector.ts                     # Difficulty-aware question selection
+│   └── SessionService.ts                       # Session lifecycle (create, end, summary)
 ├── lib/
-│   ├── supabase.ts                    # supabaseServer (service key) + supabaseClient (anon key)
-│   └── constants.ts                  # MASTERY_DELTA, MASTERY_THRESHOLD, MASTERY_STATUS
+│   ├── supabase.ts                             # supabaseServer + supabaseClient
+│   └── constants.ts                            # MASTERY_DELTAS, MASTERY_THRESHOLDS, SESSION_CONSTANTS
 └── types/
-    └── database.ts                   # Single source of truth for all TypeScript types
+    ├── database.ts                             # Single source of truth for all TypeScript types
+    └── index.ts                                # Re-exports from database.ts
 ```
 
-### Database Design (Supabase PostgreSQL)
+---
+
+## Database Design (Supabase PostgreSQL)
 
 Schema files are in `alip-app/schema/` — deploy to Supabase SQL editor in order before developing:
 1. `001_initial_schema_v2.sql` — tables, views, indexes, PostgreSQL functions
@@ -90,64 +108,221 @@ Schema files are in `alip-app/schema/` — deploy to Supabase SQL editor in orde
 
 **The `interactions` table is immutable** — rows are only inserted, never updated or deleted.
 
-### Mastery System
+---
 
-Mastery scores are numeric `0.000–1.000`. Thresholds:
+## Student Identity (MVP)
+
+No login or auth at MVP. A single student is hardcoded by UUID in both `page.tsx` and `session/page.tsx`:
+
+```typescript
+const DEFAULT_STUDENT_ID = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_STUDENT_NAME = 'Alex';
+```
+
+This UUID must match a row in the `students` table (seeded by `002_seed_data_v2.sql`).
+
+The parent dashboard at `/dashboard/[token]` treats `token` as the student ID directly — no real token validation at MVP.
+
+> Enable RLS and replace these hardcoded IDs with real auth before any multi-student public launch.
+
+---
+
+## Mastery System
+
+Mastery scores are numeric `0.000–1.000`. Thresholds (from `lib/constants.ts`):
 - `mastered`: ≥ 0.80
 - `developing`: ≥ 0.50
 - `weak`: < 0.50
 
-Answer events and mastery deltas (from `lib/constants.ts`):
-- `correct_no_hint`: +0.15
-- `correct_with_hint`: +0.08
-- `correct_explanation`: +0.20
-- `incorrect_conceptual`: −0.10
-- `incorrect_repeated`: −0.15
+Answer events and mastery deltas:
 
-### Session State Machine (8 states)
+| Event                  | Delta  |
+|------------------------|--------|
+| `correct_no_hint`      | +0.15  |
+| `correct_with_hint`    | +0.08  |
+| `correct_explanation`  | +0.20  |
+| `incorrect_conceptual` | −0.10  |
+| `incorrect_repeated`   | −0.15  |
 
-The session screen (`/session`) is the only client component with complex state. It owns an 8-state machine via `hooks/useSession.ts`:
+---
+
+## Session State Machine (10 states)
+
+The session screen (`/session`) is the only client component with complex state. The entire machine lives in `hooks/useSession.ts`.
 
 ```
-IDLE → INTRO_VIDEO → QUESTION_ACTIVE ↔ HINT_SHOWN → EVALUATING
-  → FEEDBACK_CORRECT | FEEDBACK_MISCONCEPTION | FEEDBACK_INCORRECT | SKILL_MASTERED
-  → SESSION_COMPLETE
+IDLE
+  → INTRO_VIDEO           (if introVideoUrl present on session start)
+  → QUESTION_ACTIVE       (if no intro video)
+
+INTRO_VIDEO
+  → QUESTION_ACTIVE       (on skip / "I'm Ready" — reuses preselected first question)
+
+QUESTION_ACTIVE
+  → HINT_SHOWN            (on requestHint)
+  → EVALUATING            (on submitAnswer)
+
+HINT_SHOWN
+  → EVALUATING            (on submitAnswer)
+
+EVALUATING
+  → FEEDBACK_CORRECT      (correct answer, mastery < 0.80)
+  → SKILL_MASTERED        (correct answer, mastery ≥ 0.80)
+  → FEEDBACK_MISCONCEPTION (wrong answer + misconception detected)
+  → FEEDBACK_INCORRECT    (wrong answer, no misconception)
+
+FEEDBACK_CORRECT
+  → QUESTION_ACTIVE       (on proceedToNext)
+
+FEEDBACK_MISCONCEPTION
+  → INTRO_VIDEO           (on proceedToNext — plays remediation video)
+  → QUESTION_ACTIVE       (on proceedToNext — if no remediation video)
+
+FEEDBACK_INCORRECT
+  → QUESTION_ACTIVE       (on proceedToNext)
+
+SKILL_MASTERED
+  → QUESTION_ACTIVE       (on proceedToNext — continues with next skill or same)
+
+SESSION_COMPLETE          (terminal — max questions reached or endSession called)
 ```
 
-`FEEDBACK_MISCONCEPTION` triggers a remediation video (Phase 1B), then returns to `QUESTION_ACTIVE`.
+**Hook actions:** `startSession(studentId)`, `submitAnswer(answer)`, `requestHint()`, `proceedToNext()`, `endSession()`
+
+**Hook state exports:**
+```typescript
+state, currentQuestion, currentSkill, introVideoUrl, remediationVideoUrl,
+feedbackData, sessionSummary, questionsAnswered, currentMastery,
+isLoading, error, hintUsed, sessionId, skillId, conceptId
+```
+
+**Key implementation notes:**
+- `currentMasteryRef` is kept in sync after every `setCurrentMastery()` call to prevent stale-closure bugs in async callbacks
+- The INTRO_VIDEO → QUESTION_ACTIVE transition reuses the first question already fetched by `startSession()`; it does **not** make a new network request
+- `proceedToNext()` checks `state === 'INTRO_VIDEO'` first before falling through to feedback-state handling
+- Answering resets `selectedAnswer` only when `currentQuestion?.id` changes (not on state change), so the answer is preserved during HINT_SHOWN
+
+---
+
+## Services
+
+### MasteryService
+Sole owner of mastery state mutations. All changes go through this service.
+
+**Methods:**
+- `processAnswer()` — critical path (see Answer Submit Flow below)
+- `getNextSkill(studentId, conceptId?)` — calls `get_next_skill()` RPC
+- `initStudentSkills(studentId, conceptId?)` — calls `init_student_skills()` RPC
 
 ### MisconceptionClassifier
+Rule-based distractor lookup at MVP. Uses a **module-level in-memory cache** per architecture spec ("Cache the mapping in memory at startup — do not re-query per request").
 
-MVP: rule-based deterministic lookup. Each question's `distractors` JSONB field maps wrong answers to misconception IDs. Cache the mapping in memory at startup — do not re-query per request.
-
-V2: LLM-based (Anthropic `claude-sonnet-4-20250514`) for free-text answers. Interface stays the same; only implementation changes.
-
-### QuestionSelector Difficulty Logic
-
-```
-mastery < 0.30    → prefer difficulty_weight ≤ 0.7
-mastery 0.30–0.60 → prefer difficulty_weight 0.8–1.2
-mastery 0.60–0.80 → prefer difficulty_weight 1.2–1.6
+```typescript
+// Cache structure
+let distractorCache: Map<string, DistractorMapping[]> | null = null;
+// Lazy-initialized on first classify() call via initialize()
 ```
 
-Never return the same question twice in one session.
+Each question's `distractors` JSONB is an array of `{ answer, misconception_id }` objects. The classifier does a case-insensitive, trimmed string match.
 
-### Answer Submit Flow (critical path)
+V2: LLM-based (Anthropic `claude-sonnet-4-20250514`) for free-text answers — same interface, new implementation.
 
-`POST /api/answers/submit`:
-1. `MisconceptionClassifier.classify()` (distractor lookup)
-2. `MasteryService.processAnswer()` which calls in order: `update_mastery()`, `check_and_unlock_skills()`, `log_misconception()` (if applicable), `update_question_stats()`, then inserts into `interactions`
+### QuestionSelector
+Selects the next question for a student, never repeating within a session.
+
+**Difficulty ranges:**
+
+| Mastery score      | Target `difficulty_weight` |
+|--------------------|---------------------------|
+| < 0.30             | 0.0 – 0.7                 |
+| 0.30 – 0.60        | 0.8 – 1.2                 |
+| 0.60 – 0.80        | 1.2 – 1.6                 |
+| ≥ 0.80             | 1.6 – 2.0                 |
+
+Fallback: any unseen question → least-recently-seen question.
+
+### SessionService
+Manages session lifecycle.
+
+**Methods:**
+- `startSession(studentId, conceptId?)` → `SessionStartResult`
+- `endSession(sessionId)` → `SessionSummary`
+- `getNextQuestion(sessionId, skillId, studentId, conceptId, mastery)` → `Question`
+- `updateSkillsPracticed(sessionId, skillId)` — tracks skills practiced
+- `incrementQuestionCount(sessionId)` — increments counter
+
+**`SessionStartResult`:**
+```typescript
+{
+  sessionId: string;
+  skillId: string;
+  skill: MicroSkill;
+  introVideoUrl: string | null;   // null if skill already practiced
+  firstQuestion: Question;
+  currentMastery: number;
+}
+```
+
+---
+
+## Answer Submit Flow (Critical Path)
+
+`POST /api/answers/submit` orchestrates:
+
+1. Fetch question from DB
+2. Check correctness (case-insensitive trim comparison)
+3. `MisconceptionClassifier.classify()` — distractor cache lookup
+4. `MasteryService.processAnswer()` which calls in order:
+   - `update_mastery()` RPC
+   - `check_and_unlock_skills()` RPC
+   - `log_misconception()` RPC (if misconception detected)
+   - `update_question_stats()` RPC
+   - Insert row into `interactions` table
+5. `SessionService.incrementQuestionCount()`
+6. `SessionService.updateSkillsPracticed()`
+7. `QuestionSelector.selectQuestion()` (fetch next question, if session not ended)
+8. Look up `remediationVideoUrl` (if misconception detected)
+9. Return extended `InteractionResult` with `remediationVideoUrl` and `nextQuestion`
+
+---
+
+## Answer Options (Multiple Choice)
+
+Derive options from `question.distractors` JSONB **plus** `question.correct_answer`, shuffled:
+
+```typescript
+const distractors = questionData.distractors as Array<{ answer: string }> | null;
+const options = [...distractors.map(d => d.answer), question.correct_answer]
+    .sort(() => Math.random() - 0.5);
+```
+
+Do **not** use `question.tags` — that field holds metadata labels, not answer choices.
+
+---
+
+## Session Constants (`lib/constants.ts`)
+
+```typescript
+SESSION_CONSTANTS = {
+  MAX_QUESTIONS_PER_SESSION: 10,
+  MIN_QUESTIONS_BEFORE_SUMMARY: 6,
+  INTRO_VIDEO_SKIP_DELAY_MS: 10_000,  // "I'm ready" button activates after 10s
+}
+```
 
 ---
 
 ## Key Conventions
 
-- **Hardcode `studentId = 'student-001'` at MVP** — no auth, no login
+- **Student ID:** Hardcoded UUID `'00000000-0000-0000-0000-000000000001'` — no login, no auth at MVP
 - **`supabaseServer`** (service role key) for all API routes and server components
 - **`supabaseClient`** (anon key) for client components only
-- RLS is not enabled at MVP — enable before any multi-student public launch
-- All API routes return `{ error: string }` with appropriate HTTP status on failure
-- No `any` types — all responses are typed via `src/types/database.ts`
+- **Env var validation:** `supabase.ts` uses `getRequiredEnvVar()` — throws immediately on missing or placeholder values
+- **RLS** is not enabled at MVP — enable before any multi-student public launch
+- All API routes return `{ error: string }` with appropriate HTTP status on failure; never leak internal error messages to the client
+- API routes log per-query errors and return partial data gracefully (500 only when all queries fail)
+- No `any` types — all responses typed via `src/types/database.ts`
+- No middleware — routing is purely file-based + client-side `useRouter()`
 - The `Docs/` directory contains the authoritative specs — reference `System Architecture Document - Claude.md` and `MVP Development Plan - Claude.md` for implementation details
 
 ---
@@ -162,3 +337,5 @@ NEXT_PUBLIC_SUPABASE_ANON_KEY=   # Client-side
 ```
 
 Copy `.env.example` to `.env.local` and fill in credentials from your Supabase project.
+
+> **Security:** Never commit files containing `SUPABASE_SERVICE_KEY`. The `.gitignore` excludes `query.mjs`, `query.ts`, and `.claude/` to prevent accidental credential exposure. If a service-role key is ever committed, rotate it immediately in the Supabase dashboard.
