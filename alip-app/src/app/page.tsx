@@ -1,101 +1,181 @@
-import Image from "next/image";
+'use client';
+
+import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import type { StudentSkillProfileRow, MasteryStatus } from '@/types';
+
+// Default student ID for MVP (single student, no login)
+// Note: Must be a valid UUID for the students table
+const DEFAULT_STUDENT_ID = '00000000-0000-0000-0000-000000000001';
+const DEFAULT_STUDENT_NAME = 'Alex';
+
+interface CurrentSkill {
+  skillId: string;
+  skillName: string;
+  masteryScore: number;
+  masteryStatus: MasteryStatus;
+}
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+  const router = useRouter();
+  const [currentSkill, setCurrentSkill] = useState<CurrentSkill | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    // Fetch current skill progress
+    async function fetchCurrentSkill() {
+      try {
+        const response = await fetch(`/api/students/${DEFAULT_STUDENT_ID}/progress`);
+        if (!response.ok) {
+          throw new Error('Failed to fetch progress');
+        }
+
+        const data = await response.json();
+        const skills: StudentSkillProfileRow[] = data.skills || [];
+
+        // Find the first unlocked skill that isn't mastered
+        // This will be the current skill to work on
+        const current = skills.find(
+          (s: StudentSkillProfileRow) => s.is_unlocked && s.mastery_status !== 'mastered'
+        );
+
+        if (current) {
+          setCurrentSkill({
+            skillId: current.skill_id,
+            skillName: current.skill_name,
+            masteryScore: current.mastery_score,
+            masteryStatus: current.mastery_status,
+          });
+        } else if (skills.length > 0) {
+          // All skills mastered or none unlocked - use first skill
+          setCurrentSkill({
+            skillId: skills[0].skill_id,
+            skillName: skills[0].skill_name,
+            masteryScore: skills[0].mastery_score,
+            masteryStatus: skills[0].mastery_status,
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching progress:', error);
+        // Set default skill for demo
+        setCurrentSkill({
+          skillId: 'MS-04',
+          skillName: 'Simplifying Fractions',
+          masteryScore: 0.61,
+          masteryStatus: 'developing',
+        });
+      } finally {
+        setIsLoading(false);
+      }
+    }
+
+    fetchCurrentSkill();
+  }, []);
+
+  const handleContinueLearning = () => {
+    router.push('/session');
+  };
+
+  // Calculate mastery percentage display
+  const masteryPercent = currentSkill
+    ? Math.round(currentSkill.masteryScore * 100)
+    : 0;
+
+  // Get status color class
+  const getMasteryColor = (status: MasteryStatus) => {
+    switch (status) {
+      case 'mastered':
+        return 'bg-green-500';
+      case 'developing':
+        return 'bg-blue-500';
+      case 'weak':
+        return 'bg-yellow-500';
+      default:
+        return 'bg-gray-400';
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+      <div className="w-full max-w-md">
+        {/* Welcome Section */}
+        <div className="text-center mb-8">
+          <h1 className="text-3xl font-bold text-gray-800 mb-2">
+            👋 Welcome back, {DEFAULT_STUDENT_NAME}
+          </h1>
+          <p className="text-gray-600">
+            Ready to continue learning?
+          </p>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+
+        {/* Current Skill Card */}
+        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 mb-6">
+          <p className="text-sm font-medium text-gray-500 mb-3">
+            You&apos;re working on:
+          </p>
+
+          {isLoading ? (
+            <div className="animate-pulse">
+              <div className="h-6 bg-gray-200 rounded w-3/4 mb-4"></div>
+              <div className="h-4 bg-gray-200 rounded w-1/2"></div>
+            </div>
+          ) : (
+            <>
+              <div className="bg-gray-50 rounded-xl p-4 mb-4">
+                <h2 className="text-xl font-semibold text-gray-800">
+                  {currentSkill?.skillName || 'Fractions'}
+                </h2>
+                <p className="text-sm text-gray-500 mt-1">
+                  Mastery: {masteryPercent}%
+                </p>
+              </div>
+
+              {/* Mastery Progress Bar */}
+              <div className="w-full">
+                <div className="h-3 bg-gray-200 rounded-full overflow-hidden">
+                  <div
+                    className={`h-full ${getMasteryColor(currentSkill?.masteryStatus || 'weak')} transition-all duration-500`}
+                    style={{ width: `${masteryPercent}%` }}
+                  />
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Continue Learning Button */}
+        <button
+          onClick={handleContinueLearning}
+          disabled={isLoading}
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-300 text-white font-semibold py-4 px-6 rounded-xl transition-colors flex items-center justify-center gap-2 mb-4"
         >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          Continue Learning
+          <svg
+            className="w-5 h-5"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M9 5l7 7-7 7"
+            />
+          </svg>
+        </button>
+
+        {/* View Progress Link */}
+        <div className="text-center">
+          <Link
+            href="/progress"
+            className="text-blue-600 hover:text-blue-800 font-medium text-sm underline-offset-4 hover:underline"
+          >
+            View my progress
+          </Link>
+        </div>
+      </div>
     </div>
   );
 }
