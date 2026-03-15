@@ -3,6 +3,10 @@
 // Reflects schema v2: subjects → domains → concepts → micro_skills
 // ============================================================
 
+// ── JSON TYPE (Supabase JSONB compatibility) ─────────────────
+
+export type Json = string | number | boolean | null | { [key: string]: Json | undefined } | Json[];
+
 // ── ENUMS ────────────────────────────────────────────────────
 
 export type DifficultyLevel   = 'foundational' | 'developing' | 'advanced';
@@ -82,16 +86,18 @@ export interface Concept {
 // ── KNOWLEDGE GRAPH TABLES ───────────────────────────────────
 
 export interface MicroSkill {
-  id:             string;
-  concept_id:     string;
-  name:           string;
-  description:    string;
-  mastery_goal:   string;
-  difficulty:     DifficultyLevel;
-  position:       number;
-  is_entry_point: boolean;
-  created_at:     string;
-  updated_at:     string;
+  id:                    string;
+  concept_id:            string;
+  name:                  string;
+  description:           string;
+  mastery_goal:          string;
+  difficulty:            DifficultyLevel;
+  position:              number;
+  is_entry_point:        boolean;
+  intro_video_url:       string | null;
+  intro_video_length_sec: number | null;
+  created_at:            string;
+  updated_at:            string;
 }
 
 export interface Prerequisite {
@@ -103,16 +109,18 @@ export interface Prerequisite {
 }
 
 export interface MisconceptionType {
-  id:            string;
-  concept_id:    string;
-  name:          string;
-  description:   string;
-  example_error: string;
-  root_cause:    string;
-  remediation:   string;
-  severity:      MisconceptionSeverity;
-  created_at:    string;
-  updated_at:    string;
+  id:                          string;
+  concept_id:                  string;
+  name:                        string;
+  description:                 string;
+  example_error:               string;
+  root_cause:                  string;
+  remediation:                 string;
+  severity:                    MisconceptionSeverity;
+  remediation_video_url:       string | null;
+  remediation_video_length_sec: number | null;
+  created_at:                  string;
+  updated_at:                  string;
 }
 
 export interface SkillMisconception {
@@ -123,16 +131,18 @@ export interface SkillMisconception {
 // ── STUDENT TABLES ───────────────────────────────────────────
 
 export interface Student {
-  id:           string;
-  name:         string;
-  age:          number | null;
-  grade:        string | null;
-  parent_email: string | null;
-  parent_name:  string | null;
-  timezone:     string;
-  is_active:    boolean;
-  created_at:   string;
-  updated_at:   string;
+  id:              string;
+  name:            string;
+  age:             number | null;
+  grade:           string | null;
+  parent_email:    string | null;
+  parent_name:     string | null;
+  timezone:        string;
+  is_active:       boolean;
+  auth_user_id:    string | null;
+  dashboard_token: string;
+  created_at:      string;
+  updated_at:      string;
 }
 
 export interface StudentSkillState {
@@ -194,6 +204,8 @@ export interface Question {
   is_active:           boolean;
   times_answered:      number;
   times_correct:       number;
+  distractors:         Json;  // JSONB — cast to Distractor[] in application code
+  visual_type:         string | null;
   created_at:          string;
   updated_at:          string;
 }
@@ -213,6 +225,7 @@ export interface Interaction {
   classifier_type:          ClassifierType | null;
   misconception_confidence: number | null;     // 0.0–1.0, llm only
   llm_reasoning:            string | null;     // llm audit trail
+  llm_explanation:          string | null;
   mastery_before:           number | null;
   mastery_after:            number | null;
   mastery_delta:            number | null;
@@ -357,7 +370,7 @@ export interface Database {
       prerequisites:         { Row: Prerequisite;       Insert: Omit<Prerequisite, 'id'|'created_at'>;              Update: never; };
       misconception_types:   { Row: MisconceptionType;  Insert: Omit<MisconceptionType, 'created_at'|'updated_at'>; Update: Partial<Omit<MisconceptionType, 'id'|'created_at'>>; };
       skill_misconceptions:  { Row: SkillMisconception; Insert: SkillMisconception;                                  Update: never; };
-      students:              { Row: Student;            Insert: Omit<Student, 'id'|'created_at'|'updated_at'>;      Update: Partial<Omit<Student, 'id'|'created_at'>>; };
+      students:              { Row: Student;            Insert: Omit<Student, 'id'|'created_at'|'updated_at'|'dashboard_token'> & { dashboard_token?: string };      Update: Partial<Omit<Student, 'id'|'created_at'>>; };
       student_skill_state:   { Row: StudentSkillState;  Insert: Omit<StudentSkillState, 'id'|'created_at'|'updated_at'>; Update: Partial<Omit<StudentSkillState, 'id'|'created_at'>>; };
       student_misconceptions:{ Row: StudentMisconception; Insert: Omit<StudentMisconception, 'id'|'created_at'|'updated_at'>; Update: Partial<Omit<StudentMisconception, 'id'|'created_at'>>; };
       sessions:              { Row: Session;            Insert: Omit<Session, 'id'|'created_at'|'updated_at'>;      Update: Partial<Omit<Session, 'id'|'created_at'>>; };
@@ -394,6 +407,17 @@ export interface Database {
       update_question_stats: {
         Args: { p_question_id: string; p_is_correct: boolean };
         Returns: void;
+      };
+      get_student_by_auth_user: {
+        Args: { p_auth_user_id: string };
+        Returns: {
+          id: string;
+          name: string;
+          grade: number;
+          parent_email: string | null;
+          dashboard_token: string;
+          is_active: boolean;
+        }[];
       };
     };
   };

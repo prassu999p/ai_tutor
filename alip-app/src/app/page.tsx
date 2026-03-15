@@ -1,101 +1,176 @@
-import Image from "next/image";
+import Link from 'next/link'
+import { createSupabaseServerClient } from '@/lib/supabase-ssr'
+import { MasteryBar } from '@/components'
+import type { StudentSkillProfileRow } from '@/types/database'
 
-export default function Home() {
+export default async function HomePage() {
+  const supabase = await createSupabaseServerClient()
+
+  const {
+    data: { user },
+  } = await supabase.auth.getUser()
+
+  if (!user) {
+    return <LandingScreen />
+  }
+
+  // Fetch the student record linked to this auth user
+  const { data: students, error: studentError } = await supabase.rpc(
+    'get_student_by_auth_user',
+    { p_auth_user_id: user.id }
+  )
+
+  if (studentError || !students || students.length === 0) {
+    return <LandingScreen />
+  }
+
+  const student = students[0]
+
+  // Fetch full skill profile
+  const { data: skills } = await supabase
+    .from('v_student_skill_profile')
+    .select('*')
+    .eq('student_id', student.id)
+    .order('skill_id', { ascending: true })
+
+  const skillProfile = (skills ?? []) as StudentSkillProfileRow[]
+
+  // Find the current active skill (unlocked, not mastered, most relevant)
+  const activeSkill = skillProfile.find(
+    (s) => s.is_unlocked && s.mastery_status !== 'mastered'
+  )
+
+  const hasStarted = skillProfile.some((s) => s.attempts_total > 0)
+  const masteredCount = skillProfile.filter(
+    (s) => s.mastery_status === 'mastered'
+  ).length
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="https://nextjs.org/icons/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              src/app/page.tsx
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white">
+      <div className="max-w-2xl mx-auto px-4 py-12 sm:px-6 lg:px-8">
+        {/* Header / Greeting */}
+        <header className="mb-10">
+          <p className="text-sm font-medium text-blue-600 uppercase tracking-wide">
+            ALIP
+          </p>
+          <h1 className="mt-2 text-3xl font-bold text-gray-900 sm:text-4xl">
+            Welcome back, {student.name}!
+          </h1>
+          {masteredCount > 0 && (
+            <p className="mt-2 text-gray-600">
+              You&apos;ve mastered {masteredCount} of {skillProfile.length}{' '}
+              skills. Keep it up!
+            </p>
+          )}
+        </header>
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+        {/* Active skill card */}
+        {activeSkill && (
+          <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6 mb-6">
+            <h2 className="text-sm font-medium text-gray-500 uppercase tracking-wide mb-1">
+              Current Skill
+            </h2>
+            <p className="text-xl font-semibold text-gray-900 mb-4">
+              {activeSkill.skill_name}
+            </p>
+            <MasteryBar score={activeSkill.mastery_score} size="md" />
+            <p className="mt-2 text-sm text-gray-500">
+              {activeSkill.difficulty.charAt(0).toUpperCase() +
+                activeSkill.difficulty.slice(1)}{' '}
+              &middot; {activeSkill.concept_name}
+            </p>
+          </section>
+        )}
+
+        {/* Primary CTA */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:gap-4">
+          <Link
+            href="/session"
+            className="flex-1 inline-flex items-center justify-center rounded-xl bg-blue-600 px-6 py-3.5 text-base font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
           >
-            <Image
-              className="dark:invert"
-              src="https://nextjs.org/icons/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+            {hasStarted ? 'Continue Learning' : 'Start Learning'}
+          </Link>
+          <Link
+            href="/progress"
+            className="flex-1 inline-flex items-center justify-center rounded-xl bg-white px-6 py-3.5 text-base font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
           >
-            Read our docs
-          </a>
+            View My Progress
+          </Link>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="https://nextjs.org/icons/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+
+        {/* Quick stats */}
+        {hasStarted && (
+          <section className="mt-10 grid grid-cols-3 gap-4">
+            <StatCard
+              label="Skills Mastered"
+              value={`${masteredCount}/${skillProfile.length}`}
+            />
+            <StatCard
+              label="Total Attempts"
+              value={String(
+                skillProfile.reduce((sum, s) => sum + s.attempts_total, 0)
+              )}
+            />
+            <StatCard
+              label="Accuracy"
+              value={(() => {
+                const total = skillProfile.reduce(
+                  (sum, s) => sum + s.attempts_total,
+                  0
+                )
+                const correct = skillProfile.reduce(
+                  (sum, s) => sum + s.attempts_correct,
+                  0
+                )
+                if (total === 0) return '--'
+                return `${Math.round((correct / total) * 100)}%`
+              })()}
+            />
+          </section>
+        )}
+      </div>
     </div>
-  );
+  )
+}
+
+function StatCard({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="bg-white rounded-xl border border-gray-100 shadow-sm p-4 text-center">
+      <p className="text-2xl font-bold text-gray-900">{value}</p>
+      <p className="mt-1 text-xs font-medium text-gray-500">{label}</p>
+    </div>
+  )
+}
+
+function LandingScreen() {
+  return (
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-white flex items-center justify-center px-4">
+      <div className="max-w-md w-full text-center">
+        <h1 className="text-4xl font-bold text-gray-900 sm:text-5xl">
+          ALIP
+        </h1>
+        <p className="mt-3 text-lg text-gray-600">
+          Adaptive Learning Intelligence Platform
+        </p>
+        <p className="mt-1 text-gray-500">
+          AI-powered math tutoring for K-8 students
+        </p>
+
+        <div className="mt-10 flex flex-col gap-3 sm:flex-row sm:gap-4 justify-center">
+          <Link
+            href="/login"
+            className="inline-flex items-center justify-center rounded-xl bg-blue-600 px-8 py-3.5 text-base font-semibold text-white shadow-sm hover:bg-blue-700 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-600"
+          >
+            Log In
+          </Link>
+          <Link
+            href="/signup"
+            className="inline-flex items-center justify-center rounded-xl bg-white px-8 py-3.5 text-base font-semibold text-gray-700 shadow-sm ring-1 ring-inset ring-gray-300 hover:bg-gray-50 transition-colors"
+          >
+            Sign Up
+          </Link>
+        </div>
+      </div>
+    </div>
+  )
 }
