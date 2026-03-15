@@ -89,9 +89,10 @@ export interface MicroSkill {
   mastery_goal:   string;
   difficulty:     DifficultyLevel;
   position:       number;
-  is_entry_point: boolean;
-  created_at:     string;
-  updated_at:     string;
+  is_entry_point:  boolean;
+  intro_video_url: string | null;
+  created_at:      string;
+  updated_at:      string;
 }
 
 export interface Prerequisite {
@@ -190,6 +191,7 @@ export interface Question {
   difficulty_weight:   number;
   irt_difficulty:      number | null;     // null until V2 calibration
   irt_discrimination:  number | null;     // null until V2 calibration
+  distractors:         Array<{ answer: string; misconception_id: string | null }> | null;
   tags:                string[];
   is_active:           boolean;
   times_answered:      number;
