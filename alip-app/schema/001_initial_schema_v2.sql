@@ -131,6 +131,7 @@ create table micro_skills (
   difficulty      difficulty_level not null,
   position        integer not null,    -- order within concept
   is_entry_point  boolean not null default false,
+  intro_video_url text,                -- optional intro video for this skill
   created_at      timestamptz not null default now(),
   updated_at      timestamptz not null default now()
 );
@@ -289,6 +290,7 @@ create table questions (
   -- IRT fields: null until sufficient response data collected (V2+)
   irt_difficulty          numeric(5,3),   -- b parameter: avg student ability to answer correctly
   irt_discrimination      numeric(5,3),   -- a parameter: how well it separates mastery levels
+  distractors             jsonb,          -- array of { answer, misconception_id } objects
   tags                    text[] default '{}',
   is_active               boolean not null default true,
   times_answered          integer not null default 0,   -- updated on each interaction
